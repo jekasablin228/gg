@@ -20,7 +20,7 @@ public abstract class MinecraftMixin {
     // ESP: other players get the vanilla glowing outline, visible through walls.
     @Inject(method = "shouldEntityAppearGlowing", at = @At("HEAD"), cancellable = true)
     private void ggmod$glow(Entity entity, CallbackInfoReturnable<Boolean> cir) {
-        if (Hacks.esp && entity instanceof Player && entity != ((Minecraft) (Object) this).player) {
+        if (Hacks.esp() && entity instanceof Player && entity != ((Minecraft) (Object) this).player) {
             cir.setReturnValue(true);
         }
     }

@@ -14,6 +14,6 @@ public abstract class BlockMixin {
     // X-Ray: draw every face of interesting blocks and no culled faces of anything else.
     @Inject(method = "shouldRenderFace", at = @At("HEAD"), cancellable = true)
     private static void ggmod$xray(BlockState state, BlockState neighbor, Direction face, CallbackInfoReturnable<Boolean> cir) {
-        if (Hacks.xray) cir.setReturnValue(Hacks.xrayVisible(state));
+        if (Hacks.xray()) cir.setReturnValue(Hacks.xrayVisible(state));
     }
 }

@@ -1,5 +1,6 @@
 package gg.mod;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
@@ -18,12 +19,14 @@ import net.minecraft.world.phys.Vec3;
 import org.lwjgl.glfw.GLFW;
 
 public final class Hacks {
-    public static volatile boolean esp, aim, xray;
-    private static boolean vanish, creative;
-    private static GameType modeBeforeCreative = GameType.SURVIVAL;
-
+    public static final int MENU_KEY = GLFW.GLFW_KEY_RIGHT_SHIFT;
     private static final double AIM_RANGE = 8.0;
-    private static final boolean[] wasDown = new boolean[GLFW.GLFW_KEY_LAST + 1];
+
+    /** Module waiting for a new key in the menu, or null. */
+    public static Module binding;
+
+    private static boolean configLoaded;
+    private static GameType modeBeforeCreative = GameType.SURVIVAL;
 
     private static final Set<Block> XRAY_BLOCKS = Set.of(
             Blocks.COAL_ORE, Blocks.DEEPSLATE_COAL_ORE,
@@ -39,43 +42,66 @@ public final class Hacks {
 
     private Hacks() {}
 
+    public static boolean esp() {
+        return Module.ESP.enabled;
+    }
+
+    public static boolean xray() {
+        return Module.XRAY.enabled;
+    }
+
     public static boolean xrayVisible(BlockState state) {
         return XRAY_BLOCKS.contains(state.getBlock());
     }
 
     public static void onClientTick(Minecraft mc) {
+        if (!configLoaded) {
+            configLoaded = true;
+            Config.load();
+        }
+        List<Integer> pressed = Keys.poll(mc.getWindow().handle());
+
+        if (binding != null) {
+            if (!(mc.screen instanceof MenuScreen menu)) {
+                binding = null;
+            } else if (!pressed.isEmpty()) {
+                int key = pressed.get(0);
+                // Backspace/Delete unbinds; Escape is left to close the menu.
+                if (key != GLFW.GLFW_KEY_ESCAPE && key != MENU_KEY) {
+                    binding.key = key == GLFW.GLFW_KEY_BACKSPACE || key == GLFW.GLFW_KEY_DELETE
+                            ? GLFW.GLFW_KEY_UNKNOWN : key;
+                    binding = null;
+                    Config.save();
+                    menu.refresh();
+                }
+            }
+            return;
+        }
+
         if (mc.player == null || mc.level == null) return;
-        boolean ingame = mc.screen == null;
 
-        if (pressed(mc, GLFW.GLFW_KEY_H) && ingame) {
-            esp = !esp;
-            status(mc, "ESP", esp);
+        if (mc.screen == null) {
+            for (int key : pressed) {
+                if (key == MENU_KEY) {
+                    mc.setScreen(new MenuScreen());
+                    return;
+                }
+                for (Module m : Module.values()) {
+                    if (m.key == key) toggle(mc, m);
+                }
+            }
+            if (Module.AIM.enabled && mc.options.keyAttack.isDown()) aimAtNearest(mc.player, mc);
         }
-        if (pressed(mc, GLFW.GLFW_KEY_J) && ingame) {
-            aim = !aim;
-            status(mc, "Aim", aim);
-        }
-        if (pressed(mc, GLFW.GLFW_KEY_K) && ingame) {
-            xray = !xray;
-            mc.levelRenderer.allChanged();
-            status(mc, "X-Ray", xray);
-        }
-        if (pressed(mc, GLFW.GLFW_KEY_N) && ingame) toggleVanish(mc);
-        if (pressed(mc, GLFW.GLFW_KEY_M) && ingame) toggleCreative(mc);
-
-        if (aim && ingame && mc.options.keyAttack.isDown()) aimAtNearest(mc.player, mc);
     }
 
-    private static boolean pressed(Minecraft mc, int key) {
-        boolean down = GLFW.glfwGetKey(mc.getWindow().handle(), key) == GLFW.GLFW_PRESS;
-        boolean was = wasDown[key];
-        wasDown[key] = down;
-        return down && !was;
-    }
-
-    // Action bar only: nothing goes to chat or to other players.
-    private static void status(Minecraft mc, String name, boolean on) {
-        mc.gui.setOverlayMessage(Component.literal(name + (on ? ": ON" : ": OFF")), false);
+    public static void toggle(Minecraft mc, Module m) {
+        boolean on = !m.enabled;
+        if (m == Module.VANISH && !setVanish(mc, on)) return;
+        if (m == Module.CREATIVE && !setCreative(mc, on)) return;
+        m.enabled = on;
+        if (m == Module.XRAY) mc.levelRenderer.allChanged();
+        // Action bar only: nothing goes to chat or to other players.
+        mc.gui.setOverlayMessage(Component.literal(m.title + (m.enabled ? ": ON" : ": OFF")), false);
     }
 
     private static void aimAtNearest(LocalPlayer self, Minecraft mc) {
@@ -104,17 +130,16 @@ public final class Hacks {
     // Creative and vanish change server state, so they only work when this client hosts the world.
     private static IntegratedServer hostServer(Minecraft mc) {
         IntegratedServer server = mc.getSingleplayerServer();
-        if (server == null) {
+        if (server == null || mc.player == null) {
             mc.gui.setOverlayMessage(Component.literal("Works only when you host the world"), false);
+            return null;
         }
         return server;
     }
 
-    private static void toggleCreative(Minecraft mc) {
+    private static boolean setCreative(Minecraft mc, boolean on) {
         IntegratedServer server = hostServer(mc);
-        if (server == null) return;
-        creative = !creative;
-        boolean on = creative;
+        if (server == null) return false;
         UUID id = mc.player.getUUID();
         // Calling setGameMode directly skips /gamemode, so no chat feedback is sent to anyone.
         server.execute(() -> {
@@ -127,14 +152,12 @@ public final class Hacks {
                 sp.setGameMode(modeBeforeCreative == GameType.CREATIVE ? GameType.SURVIVAL : modeBeforeCreative);
             }
         });
-        status(mc, "Creative", on);
+        return true;
     }
 
-    private static void toggleVanish(Minecraft mc) {
+    private static boolean setVanish(Minecraft mc, boolean on) {
         IntegratedServer server = hostServer(mc);
-        if (server == null) return;
-        vanish = !vanish;
-        boolean on = vanish;
+        if (server == null) return false;
         UUID id = mc.player.getUUID();
         server.execute(() -> {
             ServerPlayer sp = server.getPlayerList().getPlayer(id);
@@ -143,6 +166,6 @@ public final class Hacks {
             sp.setSilent(on);
             sp.setInvisible(on);
         });
-        status(mc, "Vanish", on);
+        return true;
     }
 }
