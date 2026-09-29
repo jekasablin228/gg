@@ -1,0 +1,9 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "gg.mod.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["EntityMixin"],
+  "client": ["MinecraftMixin", "BlockMixin"],
+  "injectors": { "defaultRequire": 0 }
+}
