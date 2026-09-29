@@ -8,6 +8,8 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.decoration.ArmorStand;
@@ -27,6 +29,8 @@ public final class Hacks {
 
     private static boolean configLoaded;
     private static GameType modeBeforeCreative = GameType.SURVIVAL;
+    /** True while X-Ray owns the night vision on the local player (so a real potion is never removed). */
+    private static boolean xrayNightVision;
 
     private static final Set<Block> XRAY_BLOCKS = Set.of(
             Blocks.COAL_ORE, Blocks.DEEPSLATE_COAL_ORE,
@@ -79,6 +83,7 @@ public final class Hacks {
         }
 
         if (mc.player == null || mc.level == null) return;
+        updateXrayBrightness(mc.player);
 
         if (mc.screen == null) {
             for (int key : pressed) {
@@ -102,6 +107,21 @@ public final class Hacks {
         if (m == Module.XRAY) mc.levelRenderer.allChanged();
         // Action bar only: nothing goes to chat or to other players.
         mc.gui.setOverlayMessage(Component.literal(m.title + (m.enabled ? ": ON" : ": OFF")), false);
+    }
+
+    // Underground ores sit at light level 0 and render almost black; client-side night vision lights them up.
+    // Re-applied every tick because respawn and dimension changes clear client effects.
+    private static void updateXrayBrightness(LocalPlayer player) {
+        if (Module.XRAY.enabled) {
+            if (!player.hasEffect(MobEffects.NIGHT_VISION)) {
+                player.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION,
+                        MobEffectInstance.INFINITE_DURATION, 0, false, false, false));
+                xrayNightVision = true;
+            }
+        } else if (xrayNightVision) {
+            player.removeEffect(MobEffects.NIGHT_VISION);
+            xrayNightVision = false;
+        }
     }
 
     private static void aimAtNearest(LocalPlayer self, Minecraft mc) {
