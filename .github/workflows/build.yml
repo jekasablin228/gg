@@ -1,0 +1,38 @@
+name: build
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Download Forge MDK for 1.21.10
+        run: |
+          set -e
+          V=$(curl -sSf https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml \
+                | grep -o '<version>1\.21\.10-[^<]*</version>' | sed 's/<[^>]*>//g' | tail -n1)
+          echo "Forge version: $V"
+          curl -sSfL -o mdk.zip "https://maven.minecraftforge.net/net/minecraftforge/forge/$V/forge-$V-mdk.zip"
+          mkdir mdk && cd mdk && unzip -q ../mdk.zip
+          # Keep the MDK's pack.mcmeta: without it Forge drops the mod's data pack and world loading breaks.
+          cp src/main/resources/pack.mcmeta ../pack.mcmeta
+          rm -rf src
+          cp -r ../src .
+          cp ../pack.mcmeta src/main/resources/pack.mcmeta
+          sed -i -e 's/^mod_id=.*/mod_id=ggmod/' -e 's/^mod_name=.*/mod_name=GG/' \
+                 -e 's/^mod_group_id=.*/mod_group_id=gg.mod/' -e 's/^mod_version=.*/mod_version=1.0.0/' gradle.properties
+          printf '\njar { manifest { attributes("MixinConfigs": "ggmod.mixins.json") } }\n' >> build.gradle
+      - name: Build
+        working-directory: mdk
+        run: |
+          chmod +x gradlew && ./gradlew build --no-daemon --stacktrace
+          cd build/libs && for f in *.jar; do case "$f" in *-sources.jar) rm "$f";; *) mv "$f" ggmod-1.0.0.jar;; esac; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ggmod
+          path: mdk/build/libs/*.jar
