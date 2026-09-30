@@ -21,7 +21,7 @@ import net.minecraft.world.phys.Vec3;
 import org.lwjgl.glfw.GLFW;
 
 public final class Hacks {
-    public static final int MENU_KEY = GLFW.GLFW_KEY_RIGHT_SHIFT;
+    public static final int MENU_KEY = GLFW.GLFW_KEY_INSERT;
     private static final double AIM_RANGE = 8.0;
 
     /** Module waiting for a new key in the menu, or null. */
@@ -64,6 +64,12 @@ public final class Hacks {
             Config.load();
         }
         List<Integer> pressed = Keys.poll(mc.getWindow().handle());
+
+        // Insert closes the menu even while a module is waiting for a bind.
+        if (mc.screen instanceof MenuScreen && pressed.contains(MENU_KEY)) {
+            mc.setScreen(null);
+            return;
+        }
 
         if (binding != null) {
             if (!(mc.screen instanceof MenuScreen menu)) {
